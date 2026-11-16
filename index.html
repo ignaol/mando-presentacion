@@ -24,10 +24,11 @@ button:active{filter:brightness(1.35)}
 #entrada input{font-size:28px;padding:14px;border-radius:12px;border:1px solid #2a3a63;background:#0e1a3a;color:#fff;text-align:center;text-transform:uppercase;letter-spacing:.3em}
 #entrada button{padding:14px}
 small{color:#6f81a6}
+#bSalir{font-size:13px;font-weight:600;padding:6px 12px;border-radius:10px;background:#3a2a2a;margin-left:8px}
 </style>
 </head>
 <body>
-<div id="barra"><span><i id="luz"></i><span id="msg">Sin conectar</span></span><span id="sala"></span></div>
+<div id="barra"><span><i id="luz"></i><span id="msg">Sin conectar</span></span><span><span id="sala"></span> <button id="bSalir" style="display:none">Salir de la sala</button></span></div>
 <div id="entrada">
   <div>Escribí el código de sala que te pasó quien comparte pantalla.</div>
   <input id="cod" maxlength="8" autocomplete="off" autocapitalize="characters" placeholder="CÓDIGO">
@@ -85,7 +86,7 @@ function abrirConexion(){
 
 function iniciar(){
   if(!codigo){ $('entrada').style.display = 'flex'; $('cod').focus(); return; }
-  $('entrada').style.display = 'none'; $('sala').textContent = 'Sala ' + codigo;
+  $('entrada').style.display = 'none'; $('sala').textContent = 'Sala ' + codigo; $('bSalir').style.display = 'inline-block';
   peer = new Peer();
   peer.on('open', abrirConexion);
   peer.on('disconnected', () => { try{ peer.reconnect(); }catch(_){} });
@@ -103,6 +104,17 @@ function enviar(a){
   const t = Date.now(); if(t - ultimo < 250) return; ultimo = t;     // evita órdenes duplicadas por un doble toque
   if(conn && conn.open){ conn.send({a}); if(navigator.vibrate) navigator.vibrate(25); }
 }
+function salir(){
+  if(reintento){ clearTimeout(reintento); reintento = null; }
+  if(conn){ try{ conn.close(); }catch(_){} conn = null; }
+  if(peer){ try{ peer.destroy(); }catch(_){} peer = null; }
+  codigo = ''; sessionStorage.removeItem('sala'); $('cod').value = '';
+  $('sala').textContent = ''; $('bSalir').style.display = 'none';
+  aviso('Sin conectar', false); $('nro').textContent = '—'; $('quien').textContent = '—'; $('quien').style.background = '#1B365D';
+  $('titulo').textContent = 'Esperando la presentación…'; $('sigue').textContent = '';
+  iniciar();
+}
+$('bSalir').onclick = salir;
 $('bSig').onclick = () => enviar('sig');
 $('bAnt').onclick = () => enviar('ant');
 $('bConectar').onclick = () => { codigo = $('cod').value.toUpperCase().replace(/[^A-Z0-9]/g, ''); if(codigo){ sessionStorage.setItem('sala', codigo); iniciar(); } };
