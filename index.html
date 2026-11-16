@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Mando de la presentación</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#050b1d;color:#eaf0fb;font-family:"Segoe UI",Roboto,Arial,sans-serif;touch-action:manipulation;-webkit-user-select:none;user-select:none}
+body{display:flex;flex-direction:column;padding:16px;gap:14px;max-width:760px;margin:0 auto}
+#barra{font-size:14px;color:#9fb0cf;display:flex;justify-content:space-between;align-items:center}
+#luz{display:inline-block;width:10px;height:10px;border-radius:50%;background:#d62828;margin-right:8px;vertical-align:0}
+#luz.ok{background:#2E7D32}
+#tarjeta{background:#0e1a3a;border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:10px}
+#nro{font-size:15px;color:#9fb0cf}
+#quien{align-self:flex-start;padding:6px 16px;border-radius:20px;font-weight:700;font-size:20px;background:#1B365D;color:#fff}
+#titulo{font-size:22px;font-weight:600;line-height:1.25}
+#sigue{font-size:14px;color:#9fb0cf}
+.botones{display:grid;grid-template-columns:1fr 2fr;gap:12px;flex:1;min-height:180px}
+button{border:0;border-radius:18px;font-size:26px;font-weight:700;color:#fff;background:#1B365D;font-family:inherit}
+button.sig{background:#2E7D32;font-size:32px}
+button:active{filter:brightness(1.35)}
+#entrada{display:none;flex-direction:column;gap:12px}
+#entrada input{font-size:28px;padding:14px;border-radius:12px;border:1px solid #2a3a63;background:#0e1a3a;color:#fff;text-align:center;text-transform:uppercase;letter-spacing:.3em}
+#entrada button{padding:14px}
+small{color:#6f81a6}
+</style>
+</head>
+<body>
+<div id="barra"><span><i id="luz"></i><span id="msg">Sin conectar</span></span><span id="sala"></span></div>
+<div id="entrada">
+  <div>Escribí el código que aparece abajo en la presentación (insignia "Mando · código").</div>
+  <input id="cod" maxlength="8" autocomplete="off" autocapitalize="characters" placeholder="CÓDIGO">
+  <button id="bConectar">Conectar</button>
+</div>
+<div id="tarjeta">
+  <div id="nro">—</div>
+  <div id="quien">—</div>
+  <div id="titulo">Esperando la presentación…</div>
+  <div id="sigue"></div>
+</div>
+<div class="botones">
+  <button id="bAnt">◀ Anterior</button>
+  <button id="bSig" class="sig">Siguiente ▶</button>
+</div>
+<small>Flechas, espacio o Re Pág / Av Pág también mueven la presentación.</small>
+
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+let codigo = (new URLSearchParams(location.search).get('sala') || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+let peer = null, conn = null, ultimo = 0;
+
+function aviso(txt, ok){ $('msg').textContent = txt; $('luz').classList.toggle('ok', !!ok); }
+
+function pintar(d){
+  $('nro').textContent = 'Paso ' + d.paso + ' de ' + d.total;
+  const q = $('quien'); q.textContent = d.quien || '—';
+  const c = d.col || ['#1B365D', '#ffffff']; q.style.background = c[0]; q.style.color = c[1];
+  $('titulo').textContent = d.titulo || '';
+  $('sigue').textContent = d.sigue ? 'Sigue ' + d.sigue.quien + ' en el paso ' + d.sigue.paso : 'Es el último tramo';
+}
+
+function abrirConexion(){
+  if(!peer || peer.destroyed) return;
+  aviso('Conectando a ' + codigo + '…', false);
+  conn = peer.connect('g10hel-' + codigo, {reliable:true});
+  const intento = setTimeout(() => { if(conn && !conn.open){ try{ conn.close(); }catch(_){} aviso('No encuentro la sala ' + codigo + ', reintento…', false); setTimeout(abrirConexion, 2500); } }, 7000);
+  conn.on('open', () => { clearTimeout(intento); aviso('Conectado a ' + codigo, true); conn.send({a:'hola'}); });
+  conn.on('data', d => { if(d && d.t === 'estado') pintar(d); });
+  conn.on('close', () => { aviso('Se cortó, reconectando…', false); setTimeout(abrirConexion, 2000); });
+  conn.on('error', () => {});
+}
+
+function iniciar(){
+  if(!codigo){ $('entrada').style.display = 'flex'; return; }
+  $('entrada').style.display = 'none'; $('sala').textContent = 'Sala ' + codigo;
+  peer = new Peer();
+  peer.on('open', abrirConexion);
+  peer.on('disconnected', () => { try{ peer.reconnect(); }catch(_){} });
+  peer.on('error', e => { if(e.type === 'peer-unavailable'){ aviso('No encuentro la sala ' + codigo + ', reintento…', false); setTimeout(abrirConexion, 2500); } else aviso('Error: ' + e.type, false); });
+}
+
+function enviar(a){
+  const t = Date.now(); if(t - ultimo < 250) return; ultimo = t;     // evita órdenes duplicadas por un doble toque
+  if(conn && conn.open){ conn.send({a}); if(navigator.vibrate) navigator.vibrate(25); }
+}
+$('bSig').onclick = () => enviar('sig');
+$('bAnt').onclick = () => enviar('ant');
+$('bConectar').onclick = () => { codigo = $('cod').value.toUpperCase().replace(/[^A-Z0-9]/g, ''); if(codigo){ history.replaceState(null, '', '?sala=' + codigo); iniciar(); } };
+document.addEventListener('keydown', e => {
+  if(['ArrowRight', ' ', 'Enter', 'PageDown'].includes(e.key)){ e.preventDefault(); enviar('sig'); }
+  else if(['ArrowLeft', 'Backspace', 'PageUp'].includes(e.key)){ e.preventDefault(); enviar('ant'); }
+});
+if(typeof Peer === 'undefined') aviso('Sin internet: no se pudo cargar PeerJS', false); else iniciar();
+</script>
+</body>
+</html>
