@@ -29,7 +29,7 @@ small{color:#6f81a6}
 <body>
 <div id="barra"><span><i id="luz"></i><span id="msg">Sin conectar</span></span><span id="sala"></span></div>
 <div id="entrada">
-  <div>Escribí el código que aparece abajo en la presentación (insignia "Mando · código").</div>
+  <div>Escribí el código de sala que te pasó quien comparte pantalla.</div>
   <input id="cod" maxlength="8" autocomplete="off" autocapitalize="characters" placeholder="CÓDIGO">
   <button id="bConectar">Conectar</button>
 </div>
@@ -48,7 +48,9 @@ small{color:#6f81a6}
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script>
 const $ = id => document.getElementById(id);
-let codigo = (new URLSearchParams(location.search).get('sala') || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+const limpiar = t => (t || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+let codigo = limpiar(new URLSearchParams(location.search).get('sala')) || limpiar(sessionStorage.getItem('sala'));
+if(location.search){ if(codigo) sessionStorage.setItem('sala', codigo); history.replaceState(null, '', location.pathname); }   // el código no queda en la barra de direcciones
 let peer = null, conn = null, ultimo = 0, ultimoMsg = 0;
 
 function aviso(txt, ok){ $('msg').textContent = txt; $('luz').classList.toggle('ok', !!ok); }
@@ -103,7 +105,7 @@ function enviar(a){
 }
 $('bSig').onclick = () => enviar('sig');
 $('bAnt').onclick = () => enviar('ant');
-$('bConectar').onclick = () => { codigo = $('cod').value.toUpperCase().replace(/[^A-Z0-9]/g, ''); if(codigo){ history.replaceState(null, '', '?sala=' + codigo); iniciar(); } };
+$('bConectar').onclick = () => { codigo = $('cod').value.toUpperCase().replace(/[^A-Z0-9]/g, ''); if(codigo){ sessionStorage.setItem('sala', codigo); iniciar(); } };
 document.addEventListener('keydown', e => {
   if(e.target && e.target.tagName === 'INPUT'){ if(e.key === 'Enter') $('bConectar').click(); return; }   // en el campo del código las teclas escriben
   if(['ArrowRight', ' ', 'Enter', 'PageDown'].includes(e.key)){ e.preventDefault(); enviar('sig'); }
