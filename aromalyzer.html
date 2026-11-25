@@ -35,7 +35,7 @@ small{color:#7f8ba3}
   <input id="cod" maxlength="8" autocomplete="off" autocapitalize="characters" placeholder="CÓDIGO">
   <button id="bConectar">Conectar</button>
 </div>
-<div id="pad">Compu: hacé clic acá y tu mouse maneja el puntero de la app (Esc para soltarlo).<br>Celular: arrastrá el dedo para moverlo y tocá para hacer clic.</div>
+<div id="pad">Compu: hacé clic acá y tu mouse maneja tu puntero en la app. Esc lo suelta y tu puntero desaparece.<br>Celular: arrastrá el dedo para moverlo y tocá para hacer clic.</div>
 <div class="fila">
   <button data-tecla="ArrowLeft">◀</button>
   <button data-rueda="-450">▲ Subir</button>
@@ -138,7 +138,11 @@ function mover(dx, dy){
 // compu: el mouse queda capturado en el panel y maneja el puntero de la app
 const pad = $("pad");
 pad.addEventListener("click", () => { if(document.pointerLockElement !== pad && matchMedia("(pointer:fine)").matches) pad.requestPointerLock(); });
-document.addEventListener("pointerlockchange", () => pad.classList.toggle("capturado", document.pointerLockElement === pad));
+document.addEventListener("pointerlockchange", () => {
+  const capturado = document.pointerLockElement === pad;
+  pad.classList.toggle("capturado", capturado);
+  if(!capturado) enviar({a: "suelta"});   // al soltar el mouse (Esc), el puntero desaparece de la app
+});
 document.addEventListener("mousemove", e => { if(document.pointerLockElement === pad) mover(e.movementX, e.movementY); });
 document.addEventListener("mousedown", e => { if(document.pointerLockElement === pad && e.button === 0) enviar({a: "baja"}); });
 document.addEventListener("mouseup", e => { if(document.pointerLockElement === pad && e.button === 0) enviar({a: "sube"}); });
