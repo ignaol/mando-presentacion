@@ -24,15 +24,19 @@ button:active{filter:brightness(1.4)}
 #texto input{font-size:16px;padding:10px;border-radius:10px;border:1px solid #33405a;background:#18202f;color:#fff}
 #texto button{font-size:14px;padding:10px 12px}
 #bSalir{font-size:12px;padding:5px 10px;background:#4a2b2b}
+.ojo{font-size:14px;padding:4px 9px;border-radius:9px;background:#24324d;touch-action:none}
+#cod{-webkit-text-security:disc}
+#cod.ver{-webkit-text-security:none}
+#filaCod{display:grid;grid-template-columns:1fr auto;gap:8px}
 small{color:#7f8ba3}
 </style>
 </head>
 <body>
-<div id="barra"><span><i id="luz"></i><span id="msg">Sin conectar</span></span><span id="donde"></span><button id="bSalir" style="display:none">Salir</button></div>
+<div id="barra"><span><i id="luz"></i><span id="msg">Sin conectar</span> <button id="ojoSala" class="ojo" title="Mantené apretado para ver el código" style="display:none">👁</button></span><span id="donde"></span><button id="bSalir" style="display:none">Salir</button></div>
 <div id="entrada">
   <div>Tu nombre y el código que te pasó quien comparte pantalla.</div>
   <input id="nom" maxlength="20" placeholder="Tu nombre">
-  <input id="cod" maxlength="12" autocomplete="off" autocapitalize="characters" placeholder="CÓDIGO">
+  <div id="filaCod"><input id="cod" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="CÓDIGO"><button id="ojoCod" class="ojo" title="Mantené apretado para ver lo que escribiste">👁</button></div>
   <button id="bConectar">Conectar</button>
 </div>
 <div id="pad">Compu: hacé clic acá y tu mouse maneja tu puntero en la app. Esc lo suelta y tu puntero desaparece.<br>Celular: arrastrá el dedo para moverlo y tocá para hacer clic.</div>
@@ -95,7 +99,16 @@ function publicarCifrado(obj){
   colaSalida = colaSalida.then(async () => { if(c.connected) c.publish(PREFIJO + tema + "/o", await cifrar(m)); }).catch(() => {});
 }
 
-function aviso(t, ok){ $("msg").textContent = t; $("luz").classList.toggle("ok", !!ok); }
+// el código no se escribe a la vista (por si alguien comparte pantalla con el mando abierto): se ve sólo con el ojo apretado
+let ultimoAviso = "", revelado = false;
+function pintarAviso(){ $("msg").textContent = ultimoAviso.replace("{c}", revelado ? codigo : "••••••"); $("ojoSala").style.display = ultimoAviso.includes("{c}") ? "inline-block" : "none"; }
+function aviso(t, ok){ ultimoAviso = t; pintarAviso(); $("luz").classList.toggle("ok", !!ok); }
+function ojo(boton, alApretar, alSoltar){
+  boton.addEventListener("pointerdown", e => { e.preventDefault(); alApretar(); });
+  for(const ev of ["pointerup", "pointerleave", "pointercancel", "blur"]) boton.addEventListener(ev, alSoltar);
+}
+ojo($("ojoSala"), () => { revelado = true; pintarAviso(); }, () => { revelado = false; pintarAviso(); });
+ojo($("ojoCod"), () => $("cod").classList.add("ver"), () => $("cod").classList.remove("ver"));
 async function iniciar(){
   if(!codigo){ $("entrada").style.display = "flex"; $("nom").value = quien; return; }
   $("entrada").style.display = "none"; $("bSalir").style.display = "inline-block";
@@ -107,7 +120,7 @@ async function iniciar(){
   cliente.on("connect", () => {
     cliente.subscribe(PREFIJO + tema + "/e");
     cliente.subscribe(PREFIJO + tema + "/r/" + yo);
-    aviso("Buscando la sala " + codigo + "…", false);
+    aviso("Buscando la sala {c}…", false);
   });
   let colaEntrada = Promise.resolve();
   cliente.on("message", (_, cuerpo) => { colaEntrada = colaEntrada.then(() => recibir(cuerpo)).catch(() => {}); });
@@ -138,10 +151,10 @@ async function recibir(cuerpo){
 setInterval(() => {
   if(!cliente || !cliente.connected) return;
   if(sala) publicarCifrado({a: "hola"});
-  if(!cerrada && Date.now() - ultimoMsg > 8000) aviso("No encuentro la sala " + codigo + ": ¿quien comparte apretó Mayús + R con ese código?", false);
+  if(!cerrada && Date.now() - ultimoMsg > 8000) aviso("No encuentro la sala {c}: ¿quien comparte apretó Mayús + R con ese código?", false);
 }, 4000);
 const directo = () => canal && canal.readyState === "open";
-function avisoConectado(){ aviso("Conectado a " + codigo + (directo() ? " · directo" : " · por servidor"), true); }
+function avisoConectado(){ aviso("Conectado a {c}" + (directo() ? " · directo" : " · por servidor"), true); }
 // el canal directo ya viene cifrado por WebRTC; si no está, va cifrado por el servidor
 const enviar = d => {
   if(directo()) canal.send(JSON.stringify({...d, id: yo, n: quien}));
