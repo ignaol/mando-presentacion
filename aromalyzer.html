@@ -25,9 +25,6 @@ button:active{filter:brightness(1.4)}
 #texto button{font-size:14px;padding:10px 12px}
 #bSalir{font-size:12px;padding:5px 10px;background:#4a2b2b}
 .ojo{font-size:14px;padding:4px 9px;border-radius:9px;background:#24324d;touch-action:none}
-#cod{-webkit-text-security:disc}
-#cod.ver{-webkit-text-security:none}
-#filaCod{display:grid;grid-template-columns:1fr auto;gap:8px}
 small{color:#7f8ba3}
 </style>
 </head>
@@ -36,7 +33,7 @@ small{color:#7f8ba3}
 <div id="entrada">
   <div>Tu nombre y el código que te pasó quien comparte pantalla.</div>
   <input id="nom" maxlength="20" placeholder="Tu nombre">
-  <div id="filaCod"><input id="cod" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="CÓDIGO"><button id="ojoCod" class="ojo" title="Mantené apretado para ver lo que escribiste">👁</button></div>
+  <input id="cod" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="CÓDIGO">
   <button id="bConectar">Conectar</button>
 </div>
 <div id="pad">Compu: hacé clic acá y tu mouse maneja tu puntero en la app. Esc lo suelta y tu puntero desaparece.<br>Celular: arrastrá el dedo para moverlo y tocá para hacer clic.</div>
@@ -108,7 +105,6 @@ function ojo(boton, alApretar, alSoltar){
   for(const ev of ["pointerup", "pointerleave", "pointercancel", "blur"]) boton.addEventListener(ev, alSoltar);
 }
 ojo($("ojoSala"), () => { revelado = true; pintarAviso(); }, () => { revelado = false; pintarAviso(); });
-ojo($("ojoCod"), () => $("cod").classList.add("ver"), () => $("cod").classList.remove("ver"));
 async function iniciar(){
   if(!codigo){ $("entrada").style.display = "flex"; $("nom").value = quien; return; }
   $("entrada").style.display = "none"; $("bSalir").style.display = "inline-block";
