@@ -32,7 +32,7 @@ small{color:#7f8ba3}
 <div id="entrada">
   <div>Tu nombre y el código que te pasó quien comparte pantalla.</div>
   <input id="nom" maxlength="20" placeholder="Tu nombre">
-  <input id="cod" maxlength="8" autocomplete="off" autocapitalize="characters" placeholder="CÓDIGO">
+  <input id="cod" maxlength="12" autocomplete="off" autocapitalize="characters" placeholder="CÓDIGO">
   <button id="bConectar">Conectar</button>
 </div>
 <div id="pad">Compu: hacé clic acá y tu mouse maneja tu puntero en la app. Esc lo suelta y tu puntero desaparece.<br>Celular: arrastrá el dedo para moverlo y tocá para hacer clic.</div>
@@ -62,49 +62,95 @@ const yo = "m" + Math.random().toString(36).slice(2, 10);
 let cliente = null, ultimoMsg = 0, cerrada = false;
 let pc = null, canal = null, intentoDirecto = 0;   // conexión directa con la sala, si la red la deja abrir
 
+// ---- seguridad: todo viaja cifrado con una clave que sale del código (PBKDF2 lento + AES-GCM), y el tema de la sala
+// también sale del código. Cada mensaje lleva la marca de la sala y un número que sólo sube.
+let clave = null, tema = "", sala = "", cuenta = 0, ultimoKSala = 0;
+async function derivar(cod){
+  const enc = new TextEncoder();
+  const base = await crypto.subtle.importKey("raw", enc.encode(cod), "PBKDF2", false, ["deriveBits"]);
+  const bits = new Uint8Array(await crypto.subtle.deriveBits(
+    {name: "PBKDF2", salt: enc.encode("aromalyzer5k09-mando"), iterations: 300000, hash: "SHA-256"}, base, 320));
+  return {
+    clave: await crypto.subtle.importKey("raw", bits.slice(0, 32), "AES-GCM", false, ["encrypt", "decrypt"]),
+    tema: [...bits.slice(32, 40)].map(b => b.toString(16).padStart(2, "0")).join(""),
+  };
+}
+async function cifrar(obj){
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({name: "AES-GCM", iv}, clave, new TextEncoder().encode(JSON.stringify(obj))));
+  const out = new Uint8Array(12 + ct.length); out.set(iv); out.set(ct, 12);
+  return out;
+}
+async function descifrar(buf){
+  try{
+    const b = new Uint8Array(buf);
+    const pt = await crypto.subtle.decrypt({name: "AES-GCM", iv: b.slice(0, 12)}, clave, b.slice(12));
+    return JSON.parse(new TextDecoder().decode(pt));
+  }catch(_){ return null; }
+}
+let colaSalida = Promise.resolve();
+function publicarCifrado(obj){
+  if(!cliente || !clave || !sala) return;
+  const c = cliente, k = ++cuenta, m = {...obj, id: yo, n: quien, sala, k};
+  colaSalida = colaSalida.then(async () => { if(c.connected) c.publish(PREFIJO + tema + "/o", await cifrar(m)); }).catch(() => {});
+}
+
 function aviso(t, ok){ $("msg").textContent = t; $("luz").classList.toggle("ok", !!ok); }
-function iniciar(){
+async function iniciar(){
   if(!codigo){ $("entrada").style.display = "flex"; $("nom").value = quien; return; }
   $("entrada").style.display = "none"; $("bSalir").style.display = "inline-block";
+  aviso("Preparando…", false);
+  const d = await derivar(codigo);
+  clave = d.clave; tema = d.tema; sala = ""; cuenta = 0; ultimoKSala = 0;
   aviso("Conectando…", false);
   cliente = mqtt.connect(SERVIDOR, {clientId: "aroma-mando-" + yo, reconnectPeriod: 2000});
   cliente.on("connect", () => {
-    cliente.subscribe(PREFIJO + codigo + "/e");
-    cliente.subscribe(PREFIJO + codigo + "/r/" + yo);
+    cliente.subscribe(PREFIJO + tema + "/e");
+    cliente.subscribe(PREFIJO + tema + "/r/" + yo);
     aviso("Buscando la sala " + codigo + "…", false);
-    enviar({a: "hola"});
   });
-  cliente.on("message", (_, cuerpo) => {
-    let d; try{ d = JSON.parse(cuerpo.toString()); }catch(_){ return; }
-    if(d && d.t === "cerrada"){
-      cerrada = true; ultimoMsg = 0; $("donde").textContent = "";
-      if(pc) try{ pc.close(); }catch(_){} pc = null; canal = null; intentoDirecto = 0;
-      aviso("La sala se cerró. Si se vuelve a abrir con el mismo código, se reconecta solo.", false);
-    }
-    else if(d && d.t === "estado"){ cerrada = false; ultimoMsg = Date.now(); avisoConectado(); $("donde").textContent = d.titulo || ""; probarDirecto(); }
-    else if(d && d.t === "respuesta" && pc && typeof d.sdp === "string"){ pc.setRemoteDescription({type: "answer", sdp: d.sdp}).catch(() => {}); }
-  });
+  let colaEntrada = Promise.resolve();
+  cliente.on("message", (_, cuerpo) => { colaEntrada = colaEntrada.then(() => recibir(cuerpo)).catch(() => {}); });
   cliente.on("offline", () => aviso("Sin internet, reintento…", false));
   cliente.on("reconnect", () => aviso("Reconectando…", false));
+}
+async function recibir(cuerpo){
+  const d = await descifrar(cuerpo);
+  if(!d || typeof d.sala !== "string" || !Number.isInteger(d.k)) return;   // sin la clave correcta no se descifra
+  // una sala nueva (se volvió a abrir) empieza de cero; en la misma sala, el número tiene que subir
+  if(d.sala !== sala){ if(d.t !== "estado") return; sala = d.sala; ultimoKSala = 0; cuenta = 0; }
+  if(d.k <= ultimoKSala) return;
+  ultimoKSala = d.k;
+  if(d.t === "cerrada"){
+    cerrada = true; ultimoMsg = 0; sala = ""; $("donde").textContent = "";
+    if(pc) try{ pc.close(); }catch(_){} pc = null; canal = null; intentoDirecto = 0;
+    aviso("La sala se cerró. Si se vuelve a abrir con el mismo código, se reconecta solo.", false);
+  }
+  else if(d.t === "estado"){
+    const primero = !ultimoMsg;
+    cerrada = false; ultimoMsg = Date.now(); avisoConectado(); $("donde").textContent = d.titulo || "";
+    if(primero) publicarCifrado({a: "hola"});
+    probarDirecto();
+  }
+  else if(d.t === "respuesta" && pc && typeof d.sdp === "string"){ pc.setRemoteDescription({type: "answer", sdp: d.sdp}).catch(() => {}); }
 }
 // la sala manda su estado cada 3 s: si no llega, se avisa qué puede estar pasando
 setInterval(() => {
   if(!cliente || !cliente.connected) return;
-  enviar({a: "hola"});
+  if(sala) publicarCifrado({a: "hola"});
   if(!cerrada && Date.now() - ultimoMsg > 8000) aviso("No encuentro la sala " + codigo + ": ¿quien comparte apretó Mayús + R con ese código?", false);
 }, 4000);
 const directo = () => canal && canal.readyState === "open";
 function avisoConectado(){ aviso("Conectado a " + codigo + (directo() ? " · directo" : " · por servidor"), true); }
+// el canal directo ya viene cifrado por WebRTC; si no está, va cifrado por el servidor
 const enviar = d => {
-  const cuerpo = JSON.stringify({...d, id: yo, n: quien});
-  if(directo()) canal.send(cuerpo);
-  else if(cliente && cliente.connected) cliente.publish(PREFIJO + codigo + "/o", cuerpo);
+  if(directo()) canal.send(JSON.stringify({...d, id: yo, n: quien}));
+  else publicarCifrado(d);
 };
 // al irse, avisa por los dos caminos así el puntero desaparece enseguida en la app
 function despedirse(){
-  const cuerpo = JSON.stringify({a: "chau", id: yo, n: quien});
-  if(directo()) try{ canal.send(cuerpo); }catch(_){}
-  if(cliente && cliente.connected) try{ cliente.publish(PREFIJO + codigo + "/o", cuerpo); }catch(_){}
+  if(directo()) try{ canal.send(JSON.stringify({a: "chau", id: yo, n: quien})); }catch(_){}
+  publicarCifrado({a: "chau"});
 }
 addEventListener("pagehide", despedirse);
 // intenta abrir el canal directo; si en 6 s no abre, sigue todo por el servidor y reintenta a los 20 s
@@ -123,7 +169,7 @@ async function probarDirecto(){
       pc.addEventListener("icegatheringstatechange", () => { if(pc.iceGatheringState === "complete") ok(); });
       setTimeout(ok, 3000);
     });
-    if(cliente && cliente.connected) cliente.publish(PREFIJO + codigo + "/o", JSON.stringify({a: "oferta", sdp: pc.localDescription.sdp, id: yo, n: quien}));
+    publicarCifrado({a: "oferta", sdp: pc.localDescription.sdp});
   }catch(_){}
 }
 
@@ -176,12 +222,16 @@ $("bConectar").onclick = () => {
 };
 $("bSalir").onclick = () => {
   despedirse();
-  if(cliente) try{ cliente.end(false); }catch(_){} cliente = null; ultimoMsg = 0;
+  const viejo = cliente; cliente = null; ultimoMsg = 0;
+  colaSalida.then(() => setTimeout(() => { try{ viejo && viejo.end(false); }catch(_){} }, 300));
+  clave = null; sala = "";
   if(pc) try{ pc.close(); }catch(_){} pc = null; canal = null; intentoDirecto = 0;
   codigo = ""; guardar("sala", null); $("bSalir").style.display = "none"; $("donde").textContent = "";
   aviso("Sin conectar", false); iniciar();
 };
-if(typeof mqtt === "undefined") aviso("Sin internet: no se pudo cargar el mando", false); else iniciar();
+if(typeof mqtt === "undefined") aviso("Sin internet: no se pudo cargar el mando", false);
+else if(!window.crypto || !crypto.subtle) aviso("Abrí el mando desde su enlace (https), no como archivo suelto", false);
+else iniciar();
 </script>
 </body>
 </html>
