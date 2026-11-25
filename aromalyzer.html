@@ -88,7 +88,7 @@ async function descifrar(buf){
 let colaSalida = Promise.resolve();
 function publicarCifrado(obj){
   if(!cliente || !clave || !sala) return;
-  const c = cliente, k = ++cuenta, m = {...obj, id: yo, n: quien, sala, k};
+  const c = cliente, nro = ++cuenta, m = {...obj, id: yo, n: quien, sala, nro};
   colaSalida = colaSalida.then(async () => { if(c.connected) c.publish(PREFIJO + tema + "/o", await cifrar(m)); }).catch(() => {});
 }
 
@@ -121,11 +121,11 @@ async function iniciar(){
 }
 async function recibir(cuerpo){
   const d = await descifrar(cuerpo);
-  if(!d || typeof d.sala !== "string" || !Number.isInteger(d.k)) return;   // sin la clave correcta no se descifra
+  if(!d || typeof d.sala !== "string" || !Number.isInteger(d.nro)) return;   // sin la clave correcta no se descifra
   // una sala nueva (se volvió a abrir) empieza de cero; en la misma sala, el número tiene que subir
   if(d.sala !== sala){ if(d.t !== "estado") return; sala = d.sala; ultimoKSala = 0; cuenta = 0; }
-  if(d.k <= ultimoKSala) return;
-  ultimoKSala = d.k;
+  if(d.nro <= ultimoKSala) return;
+  ultimoKSala = d.nro;
   if(d.t === "cerrada"){
     cerrada = true; ultimoMsg = 0; sala = ""; $("donde").textContent = "";
     if(pc) try{ pc.close(); }catch(_){} pc = null; canal = null; intentoDirecto = 0;
