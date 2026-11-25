@@ -59,7 +59,7 @@ const leer = k => { try{ return sessionStorage.getItem(k); }catch(_){ return nul
 let codigo = (leer("sala") || "").replace(/[^A-Z0-9]/g, "");
 let quien = leer("quien") || "";
 const yo = "m" + Math.random().toString(36).slice(2, 10);
-let cliente = null, ultimoMsg = 0;
+let cliente = null, ultimoMsg = 0, cerrada = false;
 let pc = null, canal = null, intentoDirecto = 0;   // conexión directa con la sala, si la red la deja abrir
 
 function aviso(t, ok){ $("msg").textContent = t; $("luz").classList.toggle("ok", !!ok); }
@@ -76,7 +76,12 @@ function iniciar(){
   });
   cliente.on("message", (_, cuerpo) => {
     let d; try{ d = JSON.parse(cuerpo.toString()); }catch(_){ return; }
-    if(d && d.t === "estado"){ ultimoMsg = Date.now(); avisoConectado(); $("donde").textContent = d.titulo || ""; probarDirecto(); }
+    if(d && d.t === "cerrada"){
+      cerrada = true; ultimoMsg = 0; $("donde").textContent = "";
+      if(pc) try{ pc.close(); }catch(_){} pc = null; canal = null; intentoDirecto = 0;
+      aviso("La sala se cerró. Si se vuelve a abrir con el mismo código, se reconecta solo.", false);
+    }
+    else if(d && d.t === "estado"){ cerrada = false; ultimoMsg = Date.now(); avisoConectado(); $("donde").textContent = d.titulo || ""; probarDirecto(); }
     else if(d && d.t === "respuesta" && pc && typeof d.sdp === "string"){ pc.setRemoteDescription({type: "answer", sdp: d.sdp}).catch(() => {}); }
   });
   cliente.on("offline", () => aviso("Sin internet, reintento…", false));
@@ -86,7 +91,7 @@ function iniciar(){
 setInterval(() => {
   if(!cliente || !cliente.connected) return;
   enviar({a: "hola"});
-  if(Date.now() - ultimoMsg > 8000) aviso("No encuentro la sala " + codigo + ": ¿quien comparte apretó Mayús + R con ese código?", false);
+  if(!cerrada && Date.now() - ultimoMsg > 8000) aviso("No encuentro la sala " + codigo + ": ¿quien comparte apretó Mayús + R con ese código?", false);
 }, 4000);
 const directo = () => canal && canal.readyState === "open";
 function avisoConectado(){ aviso("Conectado a " + codigo + (directo() ? " · directo" : " · por servidor"), true); }
