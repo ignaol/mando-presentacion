@@ -20,9 +20,9 @@ button:active{filter:brightness(1.4)}
 #pad.capturado{border:2px solid #D55E00;color:#eef2f8}
 .fila{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
 .fila button.sig{background:#007a5a}
-#texto{display:grid;grid-template-columns:1fr auto auto;gap:8px}
-#texto input{font-size:16px;padding:10px;border-radius:10px;border:1px solid #33405a;background:#18202f;color:#fff}
-#texto button{font-size:14px;padding:10px 12px}
+#soloCompu{display:none;flex:1;align-items:center;justify-content:center;text-align:center;font-size:20px;line-height:1.4;color:#a9b4c8;padding:30px}
+body.celular > :not(#soloCompu){display:none !important}
+body.celular #soloCompu{display:flex}
 #bSalir{font-size:12px;padding:5px 10px;background:#4a2b2b}
 .ojo{font-size:14px;padding:4px 9px;border-radius:9px;background:#24324d;touch-action:none}
 small{color:#7f8ba3}
@@ -36,19 +36,15 @@ small{color:#7f8ba3}
   <input id="cod" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="CÓDIGO">
   <button id="bConectar">Conectar</button>
 </div>
-<div id="pad">Compu: hacé clic acá y tu mouse maneja tu puntero en la app. Esc lo suelta y tu puntero desaparece.<br>Celular: arrastrá el dedo para moverlo y tocá para hacer clic.</div>
+<div id="soloCompu">Abrí el mando desde una computadora, con mouse o touchpad.</div>
+<div id="pad">Hacé clic acá y tu mouse maneja tu puntero en la app.<br>Esc lo suelta y tu puntero desaparece.</div>
 <div class="fila">
   <button data-tecla="ArrowLeft">◀</button>
   <button data-rueda="-450">▲ Subir</button>
   <button data-rueda="450">▼ Bajar</button>
   <button data-tecla="ArrowRight" class="sig">▶</button>
 </div>
-<div id="texto">
-  <input id="escrito" placeholder="Texto para el campo seleccionado">
-  <button id="bEscribir">Escribir</button>
-  <button data-tecla="Enter">Enter</button>
-</div>
-<small>◀ ▶ pasan de capítulo o de escena. Con el mouse capturado andan las flechas, la rueda, Enter, y lo que tipees va al campo que tocaste en la app. Esc suelta el mouse. La cajita de texto es para el celular.</small>
+<small>◀ ▶ pasan de capítulo o de escena. Con el mouse capturado andan las flechas, la rueda, Enter, y lo que tipees va al campo que tocaste en la app. Esc suelta el mouse.</small>
 
 <script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
 <script>
@@ -203,27 +199,15 @@ document.addEventListener("mousedown", e => { if(document.pointerLockElement ===
 document.addEventListener("mouseup", e => { if(document.pointerLockElement === pad && e.button === 0) enviar({a: "sube"}); });
 document.addEventListener("wheel", e => { if(document.pointerLockElement === pad){ e.preventDefault(); enviar({a: "rueda", dy: Math.max(-1200, Math.min(1200, e.deltaY * 1.5))}); } }, {passive: false});
 document.addEventListener("keydown", e => {
-  if(e.target.tagName === "INPUT"){ if(e.key === "Enter" && e.target.id !== "escrito") $("bConectar").click(); return; }
+  if(e.target.tagName === "INPUT"){ if(e.key === "Enter") $("bConectar").click(); return; }
   const k = {ArrowLeft:1, ArrowRight:1, ArrowUp:1, ArrowDown:1, PageUp:1, PageDown:1, Enter:1, Home:1, End:1, Tab:1, Backspace:1};
   if(k[e.key]){ e.preventDefault(); enviar({a: "tecla", k: e.key}); }
   // con el mouse capturado, lo que se tipea va al campo que tenga el foco en la app
   else if(document.pointerLockElement === pad && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey){ e.preventDefault(); enviar({a: "letra", c: e.key}); }
 });
 
-// celular: arrastrar mueve, tocar hace clic
-let toque = null;
-pad.addEventListener("pointerdown", e => { if(e.pointerType === "mouse") return; toque = {x: e.clientX, y: e.clientY, t: Date.now(), d: 0}; pad.setPointerCapture(e.pointerId); });
-pad.addEventListener("pointermove", e => {
-  if(!toque || e.pointerType === "mouse") return;
-  const dx = e.clientX - toque.x, dy = e.clientY - toque.y;
-  toque.x = e.clientX; toque.y = e.clientY; toque.d += Math.abs(dx) + Math.abs(dy);
-  mover(dx * 1.8, dy * 1.8);
-});
-pad.addEventListener("pointerup", e => { if(!toque || e.pointerType === "mouse") return; if(toque.d < 10 && Date.now() - toque.t < 350) enviar({a: "clic"}); toque = null; });
-
 document.querySelectorAll("[data-tecla]").forEach(b => b.onclick = () => enviar({a: "tecla", k: b.dataset.tecla}));
 document.querySelectorAll("[data-rueda]").forEach(b => b.onclick = () => enviar({a: "rueda", dy: Number(b.dataset.rueda)}));
-$("bEscribir").onclick = () => enviar({a: "texto", s: $("escrito").value.slice(0, 200)});
 $("bConectar").onclick = () => {
   quien = $("nom").value.trim().slice(0, 20); codigo = $("cod").value.toUpperCase().replace(/[^A-Z0-9]/g, "");
   if(!codigo) return;
@@ -238,7 +222,9 @@ $("bSalir").onclick = () => {
   codigo = ""; guardar("sala", null); $("bSalir").style.display = "none"; $("donde").textContent = "";
   aviso("Sin conectar", false); iniciar();
 };
-if(typeof mqtt === "undefined") aviso("Sin internet: no se pudo cargar el mando", false);
+// el mando es sólo para computadora: hace falta un mouse o touchpad para capturar el puntero
+if(!matchMedia("(pointer: fine)").matches) document.body.classList.add("celular");
+else if(typeof mqtt === "undefined") aviso("Sin internet: no se pudo cargar el mando", false);
 else if(!window.crypto || !crypto.subtle) aviso("Abrí el mando desde su enlace (https), no como archivo suelto", false);
 else iniciar();
 </script>
