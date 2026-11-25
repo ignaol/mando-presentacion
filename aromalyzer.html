@@ -29,7 +29,7 @@ small{color:#7f8ba3}
 </style>
 </head>
 <body>
-<div id="barra"><span><i id="luz"></i><span id="msg">Sin conectar</span> <button id="ojoSala" class="ojo" title="Mantené apretado para ver el código" style="display:none">👁</button></span><span id="donde"></span><button id="bSalir" style="display:none">Salir</button></div>
+<div id="barra"><span><i id="luz"></i><span id="msg">Sin conectar</span> <button id="ojoSala" class="ojo" title="Mostrar el código 3 segundos" style="display:none">👁</button></span><span id="donde"></span><button id="bSalir" style="display:none">Salir</button></div>
 <div id="entrada">
   <div>Tu nombre y el código que te pasó quien comparte pantalla.</div>
   <input id="nom" maxlength="20" placeholder="Tu nombre">
@@ -96,11 +96,12 @@ function publicarCifrado(obj){
 let ultimoAviso = "", revelado = false;
 function pintarAviso(){ $("msg").textContent = ultimoAviso.replace("{c}", revelado ? codigo : "••••••"); $("ojoSala").style.display = ultimoAviso.includes("{c}") ? "inline-block" : "none"; }
 function aviso(t, ok){ ultimoAviso = t; pintarAviso(); $("luz").classList.toggle("ok", !!ok); }
-function ojo(boton, alApretar, alSoltar){
-  boton.addEventListener("pointerdown", e => { e.preventDefault(); alApretar(); });
-  for(const ev of ["pointerup", "pointerleave", "pointercancel", "blur"]) boton.addEventListener(ev, alSoltar);
-}
-ojo($("ojoSala"), () => { revelado = true; pintarAviso(); }, () => { revelado = false; pintarAviso(); });
+// un clic en el ojo muestra el código 3 segundos; si se lo mantiene apretado, mientras dure y 3 segundos más
+let tapar = null;
+$("ojoSala").addEventListener("pointerdown", e => { e.preventDefault(); clearTimeout(tapar); revelado = true; pintarAviso(); });
+for(const ev of ["pointerup", "pointercancel"]) $("ojoSala").addEventListener(ev, () => {
+  clearTimeout(tapar); tapar = setTimeout(() => { revelado = false; pintarAviso(); }, 3000);
+});
 async function iniciar(){
   if(!codigo){ $("entrada").style.display = "flex"; $("nom").value = quien; return; }
   $("entrada").style.display = "none"; $("bSalir").style.display = "inline-block";
